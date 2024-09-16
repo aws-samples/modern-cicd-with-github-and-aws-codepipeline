@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation template for Hotel App with DynamoDB and App Runner, without networking.
+
+Parameters:
+  HotelName:
+    Type: String
+    Default: AWS App Runner Hotel
+    Description: Enter a name for the Hotel. Default is AWS App Runner Hotel.
+
+Resources:
+  # DynamoDB Table for Rooms
+  RoomsTable:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      TableName: "Rooms"
+      AttributeDefinitions:
+        - AttributeName: "id"
+          AttributeType: "N"
+      KeySchema:
+        - AttributeName: "id"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true # Enable server-side encryption for the table
+
+  # IAM Role for App Runner to access DynamoDB
+  AppRunnerInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AppRunnerHotelAppRole-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - tasks.apprunner.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - PolicyName: AppRunnerDynamoDBPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:PutItem"
+                  - "dynamodb:GetItem"
+                  - "dynamodb:Scan"
+                  - "dynamodb:UpdateItem"
+                Resource: !GetAtt RoomsTable.Arn
+        - PolicyName: AppRunnerServiceRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:PutRetentionPolicy"
+                Resource: "arn:aws:logs:*:*:log-group:/aws/apprunner/*"
+              - Effect: Allow
+                Action:
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogStreams"
+                Resource: "arn:aws:logs:*:*:log-group:/aws/apprunner/*:log-stream:*"
+
+  # IAM Role for ECR Access
+  AppRunnerECRAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AppRunnerHotelAppECRAccessRole-${AWS::Region}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - build.apprunner.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+
+  # App Runner Service
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: AppRunnerHotelService
+      SourceConfiguration:
+        AutoDeploymentsEnabled: true
+        ImageRepository:
+          ImageIdentifier: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/hotel-app:latest
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: DYNAMODB_TABLE_NAME
+                Value: "Rooms"
+              - Name: HOTEL_NAME
+                Value: !Ref HotelName
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
+      InstanceConfiguration:
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      ObservabilityConfiguration:
+        ObservabilityConfigurationArn: !GetAtt AppRunnerObservability.ObservabilityConfigurationArn
+        ObservabilityEnabled: True
+
+  # Observability for App Runner (optional, for X-Ray tracing)
+  AppRunnerObservability:
+    Type: AWS::AppRunner::ObservabilityConfiguration
+    Properties:
+      ObservabilityConfigurationName: xray-tracing
+      TraceConfiguration:
+        Vendor: AWSXRAY
+
+Outputs:
+  AppRunnerServiceUrl:
+    Description: "URL of the App Runner Service"
+    Value: !GetAtt AppRunnerService.ServiceUrl
+  DynamoDBTableName:
+    Description: "Name of the DynamoDB Table"
+    Value: !Ref RoomsTable

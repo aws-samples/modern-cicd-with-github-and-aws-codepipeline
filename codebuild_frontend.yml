@@ -1,0 +1,36 @@
+version: 0.2
+
+env:
+  variables:
+    IMAGE_TAG: "latest"  # Default value for the tag. Can be overridden.
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      # Get AWS account ID and region dynamically
+      - ACCOUNT_ID=$(echo $CODEBUILD_BUILD_ARN | cut -f5 -d ':')
+      - repository_name="hotel-app"  # Set your repository name here
+      # Log in to ECR
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - env
+
+
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image with tag $IMAGE_TAG...
+      # Build the Docker image and tag it with the dynamic IMAGE_TAG
+      - docker build -t $repository_name:$IMAGE_TAG .
+      - docker tag $repository_name:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image to ECR with tag $IMAGE_TAG...
+      # Push the image to ECR
+      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG
+artifacts:
+  files:
+    - '**/*'
+  discard-paths: yes
