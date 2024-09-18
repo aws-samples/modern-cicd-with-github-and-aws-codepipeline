@@ -21,11 +21,12 @@ body {
     Helvetica,
     Arial,
     sans-serif;
-  background-image: url(/public/hotel_landing_pic.png);
-  background-size: contain;
-  background-position: center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
+}
+
+@media (max-width: 979px) {
+  body {
+    padding-top: 0px;
+  }
 }
 
 em {

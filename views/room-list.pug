@@ -1,23 +1,8 @@
 extends layout
 
 block content
-  nav.navbar.navbar-expand-lg.navbar-light.bg-primary(style='margin-top: 10px;')
-    .container-fluid
-      a.navbar-brand(href='#')
-        span(style='margin-left: 10px;') #{menuTitle}
-      button.navbar-toggler(type='button' data-bs-toggle='collapse' data-bs-target='#navbarNav' aria-controls='navbarNav' aria-expanded='false' aria-label='Toggle navigation')
-        span.navbar-toggler-icon
-      #navbarNav.collapse.navbar-collapse
-        ul.navbar-nav
-          li.nav-item
-            a.nav-link.active(href='/#') Home
-          li.nav-item
-            a.nav-link(href='/rooms') Rooms
-          li.nav-item
-            a.nav-link(href='/add') Add
-
-  p
-  .alert.alert-info(style='margin: auto; width: 80%', role='alert') Rooms stored in database: #{rooms.length}
+  p  
+    .alert.alert-info(style='margin: auto; width: 80%', role='alert') Rooms stored in database: #{rooms.length}
   p
   h2(style='text-align: center;') Rooms List
 
