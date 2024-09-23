@@ -3,36 +3,16 @@
   "version": "3.0.0",
   "private": true,
   "scripts": {
-    "start": "node --require './create-a-tracer.js' ./bin/www"
+    "start": "node ./bin/www"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.651.1",
-    "@aws-sdk/client-secrets-manager": "^3.651.1",
-    "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-trace-otlp-grpc": "^0.53.0",
-    "@opentelemetry/id-generator-aws-xray": "^1.2.2",
-    "@opentelemetry/instrumentation": "^0.53.0",
-    "@opentelemetry/instrumentation-aws-sdk": "^0.44.0",
-    "@opentelemetry/instrumentation-express": "^0.42.0",
-    "@opentelemetry/instrumentation-http": "^0.53.0",
-    "@opentelemetry/instrumentation-mysql": "^0.41.0",
-    "@opentelemetry/propagator-aws-xray": "^1.26.0",
-    "@opentelemetry/resources": "^1.26.0",
-    "@opentelemetry/sdk-trace-base": "^1.26.0",
-    "@opentelemetry/sdk-trace-node": "^1.26.0",
-    "@opentelemetry/sdk-trace-web": "^1.26.0",
-    "@opentelemetry/semantic-conventions": "^1.27.0",
-    "cookie-parser": "~1.4.6",
+    "cookie-parser": "^1.4.6",
     "debug": "~4.3.4",
     "express": "^4.21.0",
     "http-errors": "~2.0.0",
     "morgan": "~1.10.0",
-    "mysql": "^2.18.1",
-    "postcss": "^8.4.45",
-    "postcss-nested": "^6.2.0",
-    "postcss-preset-env": "^10.0.3",
-    "pug": "^3.0.3",
-    "sinon": "^19.0.2"
+    "pug": "^3.0.3"
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^4.0.1",

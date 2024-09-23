@@ -19,9 +19,9 @@ router.get("/", async (req, res, next) => {
 
     // Map the items to extract the proper values from the DynamoDB format
     const rooms = data.Items.map((item) => ({
-      id: item.id.N, // Extract the 'N' value for room number
-      floor: item.floor.N, // Extract the 'N' value for floor
-      hasView: item.hasView.BOOL ? "Yes" : "No", // Extract the boolean and map it to 'Yes' or 'No'
+      id: item.id?.N || "Unknown", // Fallback to 'Unknown' if 'id.N' is missing
+      floor: item.floor?.N || "N/A", // Fallback to 'N/A' if 'floor.N' is missing
+      hasView: item.hasView?.BOOL !== undefined ? (item.hasView.BOOL ? "Yes" : "No") : "N/A", // Fallback to 'N/A' if 'hasView' is missing
     }));
 
     res.render("room-list", {
