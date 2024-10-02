@@ -107,3 +107,11 @@ dist
 .vscode/
 
 package-lock.json
+junit.xml
+
+.venv
+.vscode
+__pycache__
+.pytest_cache
+results-out.xml
+.DS_Store

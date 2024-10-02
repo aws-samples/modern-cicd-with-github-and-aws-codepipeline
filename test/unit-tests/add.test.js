@@ -1,6 +1,6 @@
 const { mockClient } = require("aws-sdk-client-mock");
 const { DynamoDBClient, PutItemCommand } = require("@aws-sdk/client-dynamodb");
-const app = require("../app");
+const app = require("../../app");
 const request = require("supertest");
 
 const dynamoMock = mockClient(DynamoDBClient);

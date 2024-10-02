@@ -3,7 +3,8 @@
   "version": "3.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node ./bin/www",
+    "test": "npx jest --ci --reporters=jest-junit"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.651.1",
