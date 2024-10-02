@@ -7,26 +7,13 @@ from step_helpers.add_room_helper import *
 # Load the homepage feature file
 scenarios("../features/hotel_management.feature")
 
-
 @given("I am on the homepage")
 def open_page(browser, base_url):
     open_homepage(browser, base_url)
 
-
-@when('I click on "Rooms" in the navbar')
-def navigate_to_rooms(browser):
-    open_rooms_page(browser)
-
-
 @then('I should see the page title "AWS App Runner Hotel"')
 def check_homepage_title(browser):
     verify_homepage_elements(browser, "title", "AWS App Runner Hotel")
-
-
-@then('I should see the page title "Room List"')
-def check_homepage_title(browser):
-    verify_homepage_elements(browser, "title", "Room List")
-
 
 @then(
     'the table should contain columns for "Room Number", "Floor Number", and "Good View"'

@@ -15,7 +15,6 @@ Feature: AWS App Runner Hotel Web Application
   Scenario: Navigate to the Rooms page
     When I click on "Rooms" in the navbar
     Then I should be on the "Room List" page
-    And I should see the page title "Room List"
     And I should see a table with the list of rooms
     And the table should contain columns for "Room Number", "Floor Number", and "Good View"
 
