@@ -12,7 +12,7 @@ Resources:
   RoomsTable:
     Type: "AWS::DynamoDB::Table"
     Properties:
-      TableName: "Rooms"
+      TableName: !Sub "Rooms-${AWS::StackName}-${AWS::Region}"
       AttributeDefinitions:
         - AttributeName: "id"
           AttributeType: "N"
@@ -29,7 +29,7 @@ Resources:
   AppRunnerInstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "AppRunnerHotelAppRole-${AWS::Region}"
+      RoleName: !Sub "AppRunnerHotelAppRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -71,7 +71,7 @@ Resources:
   AppRunnerECRAccessRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub "AppRunnerHotelAppECRAccessRole-${AWS::Region}"
+      RoleName: !Sub "AppRunnerHotelAppECRAccessRole-${AWS::StackName}-${AWS::Region}"
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -88,7 +88,7 @@ Resources:
   AppRunnerService:
     Type: AWS::AppRunner::Service
     Properties:
-      ServiceName: AppRunnerHotelService
+      ServiceName: !Sub "AppRunnerHotelService-${AWS::StackName}-${AWS::Region}"
       SourceConfiguration:
         AutoDeploymentsEnabled: true
         ImageRepository:
@@ -98,24 +98,13 @@ Resources:
             Port: "8080"
             RuntimeEnvironmentVariables:
               - Name: DYNAMODB_TABLE_NAME
-                Value: "Rooms"
+                Value: !Ref RoomsTable
               - Name: HOTEL_NAME
                 Value: !Ref HotelName
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
-      ObservabilityConfiguration:
-        ObservabilityConfigurationArn: !GetAtt AppRunnerObservability.ObservabilityConfigurationArn
-        ObservabilityEnabled: True
-
-  # Observability for App Runner (optional, for X-Ray tracing)
-  AppRunnerObservability:
-    Type: AWS::AppRunner::ObservabilityConfiguration
-    Properties:
-      ObservabilityConfigurationName: xray-tracing
-      TraceConfiguration:
-        Vendor: AWSXRAY
 
 Outputs:
   AppRunnerServiceUrl:
