@@ -4,7 +4,7 @@ Description: CloudFormation template for Hotel App with DynamoDB and App Runner,
 Parameters:
   HotelName:
     Type: String
-    Default: AWS App Runner Hotel
+    Default: AWS App Runner Hotel v2
     Description: Enter a name for the Hotel. Default is AWS App Runner Hotel.
 
 Resources:
