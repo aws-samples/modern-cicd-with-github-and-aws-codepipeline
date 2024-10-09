@@ -4,7 +4,7 @@ Description: CloudFormation template for Hotel App with DynamoDB and App Runner,
 Parameters:
   HotelName:
     Type: String
-    Default: AWS App Runner Hotel v3
+    Default: AWS App Runner Hotel
     Description: Enter a name for the Hotel. Default is AWS App Runner Hotel.
 
 Resources:
@@ -100,7 +100,7 @@ Resources:
               - Name: DYNAMODB_TABLE_NAME
                 Value: !Ref RoomsTable
               - Name: HOTEL_NAME
-                Value: "HotelName v6"
+                Value: !Ref HotelName
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
@@ -113,4 +113,3 @@ Outputs:
   DynamoDBTableName:
     Description: "Name of the DynamoDB Table"
     Value: !Ref RoomsTable
-
