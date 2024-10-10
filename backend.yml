@@ -6,6 +6,11 @@ Parameters:
     Type: String
     Default: AWS App Runner Hotel v3
     Description: Enter a name for the Hotel. Default is AWS App Runner Hotel.
+  Environment:
+    Type: String
+    Default: dev
+    Description: Enter a name for the Environment. Default is dev, this is used later in the workshop to tag the environments
+
 
 Resources:
   # DynamoDB Table for Rooms
@@ -100,7 +105,7 @@ Resources:
               - Name: DYNAMODB_TABLE_NAME
                 Value: !Ref RoomsTable
               - Name: HOTEL_NAME
-                Value: "HotelName v9999999998"
+                Value: !Ref HotelName
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
