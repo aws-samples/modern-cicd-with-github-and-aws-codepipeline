@@ -108,6 +108,7 @@ dist
 
 package-lock.json
 junit.xml
+integration-test-report.xml
 
 .venv
 .vscode

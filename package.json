@@ -4,16 +4,20 @@
   "private": true,
   "scripts": {
     "start": "node ./bin/www",
-    "test": "npx jest --ci --reporters=jest-junit"
+    "unit-test": "npx jest --ci --reporters=jest-junit",
+    "integration-tests": "cucumber-js test/integration-tests/features --require test/integration-tests/features/step_definitions --format progress --format junit:integration-test-report.xml"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.651.1",
+    "@cucumber/cucumber": "^11.0.1",
+    "chromedriver": "^129.0.4",
     "cookie-parser": "^1.4.6",
     "debug": "~4.3.4",
     "express": "^4.21.0",
     "http-errors": "~2.0.0",
     "morgan": "~1.10.0",
-    "pug": "^3.0.3"
+    "pug": "^3.0.3",
+    "selenium-webdriver": "^4.25.0"
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^4.0.1",

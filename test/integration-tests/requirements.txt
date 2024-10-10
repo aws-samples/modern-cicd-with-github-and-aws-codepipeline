@@ -1,5 +1,0 @@
-pytest
-pytest-bdd
-selenium
-coverage
-black
