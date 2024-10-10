@@ -113,7 +113,7 @@ Resources:
               - Name: DYNAMODB_TABLE_NAME
                 Value: !Ref RoomsTable
               - Name: HOTEL_NAME
-                Value: "Hotel 123"
+                Value: "Hotel123"
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
