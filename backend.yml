@@ -31,7 +31,7 @@ Resources:
         SSEEnabled: true # Enable server-side encryption for the table
       Tags:
         - Key: "Project"
-          Value: !Sub "HotelApp-{Environment}"
+          Value: !Sub "HotelApp-${Environment}"
 
   # IAM Role for App Runner to access DynamoDB
   AppRunnerInstanceRole:
@@ -76,7 +76,7 @@ Resources:
                 Resource: "arn:aws:logs:*:*:log-group:/aws/apprunner/*:log-stream:*"
       Tags:
         - Key: "Project"
-          Value: !Sub "HotelApp-{Environment}"
+          Value: !Sub "HotelApp-${Environment}"
   
   # IAM Role for ECR Access
   AppRunnerECRAccessRole:
@@ -96,7 +96,7 @@ Resources:
         - "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
       Tags:
         - Key: "Project"
-          Value: !Sub "HotelApp-{Environment}"
+          Value: !Sub "HotelApp-${Environment}"
 
   AppRunnerService:
     Type: AWS::AppRunner::Service
@@ -120,7 +120,7 @@ Resources:
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
       Tags:
         - Key: "Project"
-          Value: !Sub "HotelApp-{Environment}"
+          Value: !Sub "HotelApp-${Environment}"
 
 
 Outputs:
