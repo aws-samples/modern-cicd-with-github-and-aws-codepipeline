@@ -130,3 +130,4 @@ Outputs:
   DynamoDBTableName:
     Description: "Name of the DynamoDB Table"
     Value: !Ref RoomsTable
+
