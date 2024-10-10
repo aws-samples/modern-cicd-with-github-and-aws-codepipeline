@@ -29,6 +29,9 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: true # Enable server-side encryption for the table
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-{Environment}"
 
   # IAM Role for App Runner to access DynamoDB
   AppRunnerInstanceRole:
@@ -71,7 +74,10 @@ Resources:
                   - "logs:PutLogEvents"
                   - "logs:DescribeLogStreams"
                 Resource: "arn:aws:logs:*:*:log-group:/aws/apprunner/*:log-stream:*"
-
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-{Environment}"
+  
   # IAM Role for ECR Access
   AppRunnerECRAccessRole:
     Type: AWS::IAM::Role
@@ -88,8 +94,39 @@ Resources:
               - "sts:AssumeRole"
       ManagedPolicyArns:
         - "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-{Environment}"
+
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Sub "Hotel-${AWS::StackName}-${AWS::Region}"
+      SourceConfiguration:
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/hotel-app:latest
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: DYNAMODB_TABLE_NAME
+                Value: !Ref RoomsTable
+              - Name: HOTEL_NAME
+                Value: !Ref HotelName
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
+      InstanceConfiguration:
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-{Environment}"
+
 
 Outputs:
+  AppRunnerServiceUrl:
+    Description: "URL of the App Runner Service"
+    Value: !GetAtt AppRunnerService.ServiceUrl
   DynamoDBTableName:
     Description: "Name of the DynamoDB Table"
     Value: !Ref RoomsTable
