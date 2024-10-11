@@ -122,6 +122,13 @@ Resources:
         - Key: "Project"
           Value: !Sub "HotelApp-${Environment}"
 
+  AppRunnerURLSSMParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties: 
+      Name: !Sub "/hotelapp/${Environment}/url"
+      Description: "Hotel App URI"
+      Type: "String"
+      Value: !GetAtt AppRunnerService.ServiceUrl
 
 Outputs:
   AppRunnerServiceUrl:
