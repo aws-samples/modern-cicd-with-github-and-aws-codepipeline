@@ -1,10 +1,12 @@
-const { Given, When, Then, After } = require('@cucumber/cucumber');
+const { setDefaultTimeout, Given, When, Then, After } = require('@cucumber/cucumber');
 const { Builder, By, until } = require('selenium-webdriver');
 const { openHomepage, verifyHomepageElements } = require('./helpers/homepageHelper');
 const { openAddRoomPage, fillAddRoomForm, verifyAddRoomSuccess, verifyAddRoomFormFields, verifySubmitButton } = require('./helpers/addRoomHelper');
 const { openRoomsPage, verifyRoomList, verifyRoomDetails, verifyTableColumns, verifyRoomsStoredAlert } = require('./helpers/roomsHelper');
 
 let driver;
+
+setDefaultTimeout(120 * 1000); // needed for the time it takes to spin up the remote web driver if used
 
 // Function to build and return a WebDriver instance
 const buildDriver = async () => {
