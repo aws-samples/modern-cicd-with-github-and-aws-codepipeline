@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "unit-test": "npx jest --ci --collectCoverage --reporters=jest-junit",
-    "integration-tests": "cucumber-js test/integration-tests/features --require test/integration-tests/features/step_definitions --format progress --format junit:integration-test-report.xml"
+    "integration-tests": "cucumber-js test/integration-tests/features --require test/integration-tests/features/step_definitions --format progress --format junit:integration-test-report.xml --parallel 6"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.651.1",
