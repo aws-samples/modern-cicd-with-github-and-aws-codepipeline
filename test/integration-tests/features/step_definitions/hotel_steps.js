@@ -27,6 +27,10 @@ const buildDriver = async () => {
 };
 
 // Step Definitions
+Before({timeout: 120 * 1000}, function() {
+  // Does some slow browser/filesystem/network actions
+});
+
 Given('I am on the homepage', async function () {
     await buildDriver();  // Create WebDriver instance
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
