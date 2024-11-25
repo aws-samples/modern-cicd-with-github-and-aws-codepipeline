@@ -29,6 +29,9 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: true # Enable server-side encryption for the table
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-${Environment}"
 
   # IAM Role for App Runner to access DynamoDB
   AppRunnerInstanceRole:
@@ -121,12 +124,12 @@ Resources:
               - Name: DYNAMODB_TABLE_NAME
                 Value: !Ref RoomsTable
               - Name: HOTEL_NAME
-                Value: !Sub "HotelApp-${Environment}"
+                Value: !Ref HotelName
         AuthenticationConfiguration:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
- 
+
   AppRunnerURLSSMParameter:
     Type: "AWS::SSM::Parameter"
     Properties:
