@@ -4,7 +4,7 @@ This project is a web application for managing hotel rooms, allowing users to vi
 
 The Hotel Room Management System is designed to provide an efficient way for hotel staff to manage room inventory. It offers a user-friendly interface for adding new rooms, viewing existing rooms, and managing room details such as floor number and view status. The application is built with Node.js and Express.js, utilizing AWS services like DynamoDB for data storage and App Runner for deployment.
 
-![Hotel Room Management](public/hotel_landing_pic.png)
+![Hotel Room Management](readme_image.png)
 
 Key features include:
 - Add new rooms with details (room number, floor number, view status)
