@@ -105,7 +105,7 @@ Resources:
       EvaluationPeriods: 1
       Threshold: 4 # 80% of 5 ReadCapacityUnits
       ComparisonOperator: "GreaterThanThreshold"
-    AppRunnerService:
+  AppRunnerService:
     Type: AWS::AppRunner::Service
     Properties:
       ServiceName: !Sub "Hotel-${AWS::StackName}-${AWS::Region}"
