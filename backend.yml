@@ -133,7 +133,6 @@ Outputs:
           AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
       InstanceConfiguration:
         InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
-
   AppRunnerURLSSMParameter:
     Type: "AWS::SSM::Parameter"
     Properties:
