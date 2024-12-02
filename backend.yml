@@ -72,7 +72,10 @@ Resources:
                   - "logs:DescribeLogStreams"
                 Resource: "arn:aws:logs:*:*:log-group:/aws/apprunner/*:log-stream:*"
 
-  # IAM Role for ECR Access
+  # IAM Role for ECR Access #cd /Workshop/modern-cicd-with-github-and-aws-codepipeline/
+git add .
+git commit -m "Add App Runner Service"
+git push
   AppRunnerECRAccessRole:
     Type: AWS::IAM::Role
     Properties:
