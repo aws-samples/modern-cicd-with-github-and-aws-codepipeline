@@ -30,7 +30,7 @@ Resources:
       SSESpecification:
         SSEEnabled: true # Enable server-side encryption for the table
 
-  # IAM Role for App Runner to access DynamoDB
+  # IAM Role for App Runner to access DynamoDB #
   AppRunnerInstanceRole:
     Type: AWS::IAM::Role
     Properties:
