@@ -14,6 +14,6 @@ reports:
       - junit.xml
     file-format: JUNITXML
   codecoverage:
-    files:cd /Workshop/modern-cicd-with-github-and-aws-codepipeline/
+    files:
       - 'coverage/cobertura-coverage.xml'
     file-format: 'COBERTURAXML'
