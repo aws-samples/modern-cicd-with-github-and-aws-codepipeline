@@ -106,7 +106,40 @@ Resources:
       Threshold: 4 # 80% of 5 ReadCapacityUnits
       ComparisonOperator: "GreaterThanThreshold"
 
+  AppRunnerService:
+    Type: AWS::AppRunner::Service
+    Properties:
+      ServiceName: !Sub "Hotel-${AWS::StackName}-${AWS::Region}"
+      SourceConfiguration:
+        AutoDeploymentsEnabled: false
+        ImageRepository:
+          ImageIdentifier: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/hotel-app:latest
+          ImageRepositoryType: ECR
+          ImageConfiguration:
+            Port: "8080"
+            RuntimeEnvironmentVariables:
+              - Name: DYNAMODB_TABLE_NAME
+                Value: !Ref RoomsTable
+              - Name: HOTEL_NAME
+                Value: !Ref HotelName
+        AuthenticationConfiguration:
+          AccessRoleArn: !GetAtt AppRunnerECRAccessRole.Arn
+      InstanceConfiguration:
+        InstanceRoleArn: !GetAtt AppRunnerInstanceRole.Arn
+
+  AppRunnerURLSSMParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: !Sub "/hotelapp/${Environment}/url"
+      Description: "Hotel app URI"
+      Type: "String"
+      Value: !Sub "https://${AppRunnerService.ServiceUrl}"
+
 Outputs:
   DynamoDBTableName:
     Description: "Name of the DynamoDB Table"
     Value: !Ref RoomsTable
+
+  AppRunnerServiceUrl:
+    Description: "URL of the App Runner Service"
+    Value: !GetAtt AppRunnerService.ServiceUrl
