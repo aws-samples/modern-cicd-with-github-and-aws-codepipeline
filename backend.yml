@@ -17,6 +17,9 @@ Resources:
   RoomsTable:
     Type: "AWS::DynamoDB::Table"
     Properties:
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-${Environment}"
       TableName: !Sub "Rooms-${AWS::StackName}-${AWS::Region}"
       AttributeDefinitions:
         - AttributeName: "id"
