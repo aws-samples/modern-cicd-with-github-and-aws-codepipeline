@@ -138,7 +138,7 @@ Resources:
       Value: !Sub "https://${AppRunnerService.ServiceUrl}"
 Outputs:
   DynamoDBTableName:
-    Description: "Name of the DynamoDB Table"
+    Description: "Name of the DynamoDB Table" 
     Value: !Ref RoomsTable
   AppRunnerServiceUrl:
     Description: "URL of the App Runner Service"
