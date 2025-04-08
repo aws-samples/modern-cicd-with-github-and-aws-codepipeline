@@ -1,0 +1,66 @@
+name: Intelligent Code Review
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      pull-requests: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install dependencies @actions/core and @actions/github
+      run: |
+        npm install @actions/core
+        npm install @actions/github
+      shell: bash
+
+    - name: Check if required dependencies are installed
+      run: |
+        npm list @actions/core
+        npm list @actions/github
+      shell: bash
+
+    - name: Debug GitHub Token
+      run: |
+        if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
+          echo "GitHub Token is set"
+        else
+          echo "GitHub Token is not set"
+        fi
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: us-east-1
+
+    - name: Intelligent GitHub Actions
+      uses: aws-sample/aws-genai-cicd-suite@stable
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        aws-region: us-east-1
+        model-id: anthropic.claude-3-sonnet-20240229-v1:0
+        generate-code-review: 'true'
+        generate-code-review-level: 'detailed'
+        generate-code-review-exclude-files: '*.md,*.json'
+        generate-pr-description: 'true'
+        generate-unit-test: 'true'
+        generate-unit-test-source-folder: 'src'
+        output-language: 'en'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
