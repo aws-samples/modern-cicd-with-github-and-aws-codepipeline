@@ -59,7 +59,7 @@ jobs:
         generate-code-review-level: 'detailed'
         generate-code-review-exclude-files: '*.md,*.json'
         generate-pr-description: 'true'
-        generate-unit-test: 'true'
+        generate-unit-test: 'false'
         generate-unit-test-source-folder: '.'
         output-language: 'en'
       env:
