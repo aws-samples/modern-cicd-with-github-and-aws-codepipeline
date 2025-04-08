@@ -50,7 +50,7 @@ jobs:
         aws-region: us-east-1
 
     - name: Intelligent GitHub Actions
-      uses: aws-sample/aws-genai-cicd-suite@stable
+      uses: aws-samples/aws-genai-cicd-suite@stable
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         aws-region: us-east-1
@@ -59,8 +59,8 @@ jobs:
         generate-code-review-level: 'detailed'
         generate-code-review-exclude-files: '*.md,*.json'
         generate-pr-description: 'true'
-        generate-unit-test: 'true'
-        generate-unit-test-source-folder: 'src'
+        generate-unit-test: 'false'
+        generate-unit-test-source-folder: '.'
         output-language: 'en'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
