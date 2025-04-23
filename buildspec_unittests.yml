@@ -16,7 +16,4 @@ reports:
   codecoverage:
     files:
       - 'coverage/cobertura-coverage.xml'
-    file-format: 'COBERTURAXML'cd /Workshop/modern-cicd-with-github-and-aws-codepipeline/
-git add .
-git commit -m "Added Build Spec for unit test reporting"
-git push
+    file-format: 'COBERTURAXML'
