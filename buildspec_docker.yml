@@ -34,3 +34,5 @@ phases:
       - echo "Retrieving the image digest from ECR..."
       - IMAGE_DIGEST=$(aws ecr describe-images --repository-name $repository_name --image-ids imageTag=$IMAGE_TAG --query 'imageDetails[0].imageDigest' --output text)
       - IMAGE_IDENTIFIER="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${repository_name}@${IMAGE_DIGEST}"
+
+      
