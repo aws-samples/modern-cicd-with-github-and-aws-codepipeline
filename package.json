@@ -10,7 +10,7 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.651.1",
     "@cucumber/cucumber": "^11.0.1",
-    "chromedriver": "^135.0.3",
+    "chromedriver": "^137.0.3",
     "cookie-parser": "^1.4.6",
     "debug": "~4.4.0",
     "express": "^5.1.0",
