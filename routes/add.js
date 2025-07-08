@@ -9,7 +9,7 @@ const { DynamoDBClient, PutItemCommand } = require("@aws-sdk/client-dynamodb");
 // Initialize DynamoDB Client
 const dynamoClient = new DynamoDBClient({
   region: config.infra.region,
-  endpoint: config.infra.dynamodb_endpoint,
+  // endpoint: config.infra.dynamodb_endpoint,
 });
 
 // POST route to add a new room
