@@ -29,7 +29,7 @@ phases:
   post_build:
     commands:
       - echo Writing image definitions file...
-      - printf '[{"name":"hello-world","imageUri":"%s"}]' $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG > imagedefinitions.json
+      - printf '[{"name":"hotel-app","imageUri":"%s"}]' $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG > imagedefinitions.json
       
 artifacts:
   files: imagedefinitions.json
