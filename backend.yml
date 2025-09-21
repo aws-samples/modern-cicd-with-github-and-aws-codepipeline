@@ -318,7 +318,7 @@ Resources:
   ApplicationURLSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: !Sub "/hotelapp/${Environment}/url"
+      Name: !Sub "/hotel/${Environment}/url"
       Description: "Hotel app URI"
       Type: String
       Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
