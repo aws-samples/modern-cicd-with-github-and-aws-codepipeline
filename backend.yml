@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: CloudFormation template for Hotel App with DynamoDB and App Runner, without networking.
+Description: CloudFormation template for Hotel App with DynamoDB and ECS.
 
 Parameters:
   HotelName:
     Type: String
-    Default: AWS App Runner Hotel
-    Description: Enter a name for the Hotel. Default is AWS App Runner Hotel.
+    Default: AWS Hotel
+    Description: Enter a name for the Hotel. Default is AWS Hotel.
   Environment:
     Type: String
     Default: dev
@@ -172,8 +172,8 @@ Resources:
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
+          FromPort: 8081
+          ToPort: 8081
           SourceSecurityGroupId: !Ref ALBSecurityGroup
 
   ALBSecurityGroup:
@@ -208,12 +208,14 @@ Resources:
         - Name: hotel-app
           Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/hotel-app:latest"
           PortMappings:
-            - ContainerPort: 8080
+            - ContainerPort: 8081
           Environment:
             - Name: DYNAMODB_TABLE_NAME
               Value: !Ref RoomsTable
             - Name: HOTEL_NAME
               Value: !Ref HotelName
+            - Name: DYNAMODB_ENDPOINT
+              Value: "dynamodb.us-east-1.amazonaws.com"
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -238,7 +240,7 @@ Resources:
           AssignPublicIp: ENABLED
       LoadBalancers:
         - ContainerName: hotel-app
-          ContainerPort: 8080
+          ContainerPort: 8081
           TargetGroupArn: !Ref TargetGroup
 
   # Application Load Balancer
@@ -253,7 +255,7 @@ Resources:
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Port: 8080
+      Port: 8081
       Protocol: HTTP
       VpcId: !Ref VPC
       TargetType: ip
