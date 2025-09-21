@@ -307,14 +307,12 @@ Resources:
                   - dynamodb:Scan
                   - dynamodb:UpdateItem
                 Resource: !GetAtt RoomsTable.Arn
-
-  # CloudWatch Log Group
   LogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub "/ecs/hotel-app-${Environment}"
       RetentionInDays: 7
-  AppRunnerURLSSMParameter:
+  ApplicationURLSSMParameter:
     Type: AWS::SSM::Parameter
     Properties:
       Name: !Sub "/hotelapp/${Environment}/url"
