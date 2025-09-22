@@ -38,7 +38,9 @@ const buildDriver = async () => {
     options.addArguments(
       '--no-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--allow-running-insecure-content',
+      '--disable-web-security'
     );
 
     if (process.env.CI) {
@@ -77,40 +79,24 @@ Then('I should see the heading {string}', async function (headingText) {
 });
 
 When('I click on {string} in the navbar', async function (linkText) {
-  // Retry mechanism for stale element reference
-  let attempts = 0;
-  const maxAttempts = 3;
-  
-  while (attempts < maxAttempts) {
-    try {
-      // Wait for page to be ready
-      await driver.sleep(1000);
-      
-      // Re-find the navbar link to avoid stale element reference
-      const navbarLinkLocator = By.linkText(linkText);
-      await driver.wait(
-        until.elementLocated(navbarLinkLocator),
-        10000,
-        `Navbar link "${linkText}" not found`
-      );
-
-      // Find the element fresh each time
-      const navbarLink = await driver.findElement(navbarLinkLocator);
-      
-      // Click the navbar link
-      await navbarLink.click();
-
-      // Wait for page to load
-      await driver.sleep(1000);
-      break;
-    } catch (error) {
-      attempts++;
-      if (attempts >= maxAttempts) {
-        throw error;
-      }
-      await driver.sleep(500);
-    }
+  // Ensure navbar is expanded
+  const toggleButton = await driver.findElement(By.className("navbar-toggler"));
+  if (await toggleButton.isDisplayed()) {
+    await toggleButton.click();
+    await driver.sleep(500);
   }
+  
+  // Find and click the navbar link
+  const navbarLinkLocator = By.linkText(linkText);
+  await driver.wait(
+    until.elementLocated(navbarLinkLocator),
+    10000,
+    `Navbar link "${linkText}" not found`
+  );
+  
+  const navbarLink = await driver.findElement(navbarLinkLocator);
+  await navbarLink.click();
+  await driver.sleep(1000);
 });
 
 

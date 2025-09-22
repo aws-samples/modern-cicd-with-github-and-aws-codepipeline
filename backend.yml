@@ -188,7 +188,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: 0.0.0.0/0
+          SourcePrefixListId: pl-3b927c52
 
   # ECS Cluster
   ECSCluster:
@@ -274,6 +274,31 @@ Resources:
       Port: 80
       Protocol: HTTP
 
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: ALBOrigin
+            DomainName: !GetAtt ApplicationLoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: ALBOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          ForwardedValues:
+            QueryString: true
+            Headers: ["*"]
+          MinTTL: 0
+          DefaultTTL: 0
+          MaxTTL: 0
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
   # IAM Roles
   ECSExecutionRole:
     Type: AWS::IAM::Role
@@ -321,15 +346,15 @@ Resources:
       Name: !Sub "/hotel/${Environment}/url"
       Description: "Hotel app URI"
       Type: String
-      Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}"
 
 Outputs:
   DynamoDBTableName:
     Description: "Name of the DynamoDB Table"
     Value: !Ref RoomsTable
   ApplicationURL:
-    Description: "URL of the Application Load Balancer"
-    Value: !Sub "http://${ApplicationLoadBalancer.DNSName}"
+    Description: "CloudFront Distribution URL"
+    Value: !Sub "https://${CloudFrontDistribution.DomainName}"
   ECSClusterName:
     Description: "Name of the ECS Cluster"
     Value: !Ref ECSCluster
