@@ -1,0 +1,35 @@
+version: 0.2
+
+env:
+  variables:
+    IMAGE_TAG: "latest"  # Default value for the tag. Can be overridden.
+
+phases:
+  install:
+    commands:
+      - npm install
+
+  pre_build:
+    commands:
+      - echo "Extracting AWS Account ID from CODEBUILD_BUILD_ARN..."
+      - export ACCOUNT_ID=$(echo $CODEBUILD_BUILD_ARN | cut -f5 -d ':')
+      - export repository_name="hotel-app"  # Set your repository name here
+      - echo "Logging into Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+  build:
+    commands:
+      - echo "Building the Docker image..."
+      - docker build -t $repository_name:$IMAGE_TAG .
+      - echo "Tagging the Docker image for ECR..."
+      - docker tag $repository_name:$IMAGE_TAG $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG
+      - echo "Pushing the Docker image to ECR..."
+      - docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG
+
+  post_build:
+    commands:
+      - echo Writing image definitions file...
+      - printf '[{"name":"hotel-app","imageUri":"%s"}]' $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$repository_name:$IMAGE_TAG > imagedefinitions.json
+      
+artifacts:
+  files: imagedefinitions.json
