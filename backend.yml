@@ -29,6 +29,9 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: true # Enable server-side encryption for the table
+      Tags:
+        - Key: "Project"
+          Value: !Sub "HotelApp-${Environment}"
   
   # Sample Alarm - we will use this later to prove AWS CodePipeline Condition Gates
   DynamoDBReadCapacityAlarm:
