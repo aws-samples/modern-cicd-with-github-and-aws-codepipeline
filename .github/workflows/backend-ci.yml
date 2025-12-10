@@ -1,0 +1,140 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test-and-validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Setup Python (for AWS SAM)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install AWS SAM CLI
+        run: |
+          pip install aws-sam-cli
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend linting
+        run: npm run lint:backend
+
+      - name: Build backend
+        run: npm run build:backend
+
+      - name: Run backend unit tests
+        run: npm run test:backend
+        env:
+          CI: true
+          AWS_REGION: us-west-2
+          DYNAMODB_TABLE_NAME: RoomsTest
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: backend/junit.xml
+          retention-days: 30
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 30
+
+      - name: Validate SAM template
+        run: |
+          cd backend
+          sam validate --lint
+
+      - name: Validate CloudFormation template
+        run: |
+          cd backend
+          aws cloudformation validate-template --template-body file://backend.yml || true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || 'fake-key-id' }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || 'fake-secret-key' }}
+          AWS_DEFAULT_REGION: us-west-2
+
+      - name: Build SAM application
+        run: |
+          cd backend
+          sam build
+
+      - name: Upload SAM build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-sam-build
+          path: backend/.aws-sam/
+          retention-days: 7
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate --workspace=backend
+        continue-on-error: true
+
+      - name: Check for vulnerable dependencies
+        run: |
+          echo "🔍 Checking for known vulnerabilities..."
+          npm audit --workspace=backend --json > backend-audit.json || true
+          cat backend-audit.json
+
+      - name: Upload audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-security-audit
+          path: backend-audit.json
+          retention-days: 30

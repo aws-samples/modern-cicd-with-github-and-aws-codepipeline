@@ -1,0 +1,76 @@
+version: 0.2
+
+# Backend buildspec for AWS CodeBuild
+# This buildspec builds the Lambda backend, runs tests, validates CloudFormation,
+# and prepares artifacts for deployment
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing dependencies..."
+      - cd backend
+      - npm ci
+      - echo "Dependencies installed successfully"
+
+  pre_build:
+    commands:
+      - echo "Running tests and generating reports..."
+      - npm run test
+      - echo "Tests completed successfully"
+      - echo "Validating CloudFormation templates..."
+      - aws cloudformation validate-template --template-body file://backend.yml || echo "Warning: CloudFormation validation failed"
+      - aws cloudformation validate-template --template-body file://template.yaml || echo "Warning: SAM template validation failed"
+      - echo "CloudFormation validation completed"
+
+  build:
+    commands:
+      - echo "Building Lambda functions..."
+      - npm run build
+      - echo "Lambda functions built successfully"
+      - ls -la dist/
+      - echo "Packaging Lambda functions..."
+      - echo "Creating deployment package..."
+      - mkdir -p deployment-package
+      - cp -r dist deployment-package/
+      - cp -r node_modules deployment-package/
+      - cp package.json deployment-package/
+      - cd deployment-package
+      - zip -r ../lambda-deployment.zip . -x "*.git*" "*.test.*" "*.spec.*"
+      - cd ..
+      - ls -lh lambda-deployment.zip
+      - echo "Lambda package created successfully"
+
+  post_build:
+    commands:
+      - echo "Preparing CloudFormation artifacts..."
+      - echo "Copying CloudFormation templates..."
+      - cp backend.yml backend-packaged.yml
+      - echo "Artifacts prepared successfully"
+      - echo "Build completed at $(date)"
+      - echo "Listing artifacts..."
+      - ls -la
+
+artifacts:
+  files:
+    - backend/backend-packaged.yml
+    - backend/lambda-deployment.zip
+  name: backend-build-$(date +%Y%m%d-%H%M%S)
+
+reports:
+  backend-test-results:
+    files:
+      - 'test-results/junit.xml'
+    base-directory: backend
+    file-format: JUNITXML
+  
+  backend-coverage-report:
+    files:
+      - 'coverage/cobertura-coverage.xml'
+    base-directory: backend
+    file-format: COBERTURAXML
+
+cache:
+  paths:
+    - 'backend/node_modules/**/*'

@@ -1,0 +1,55 @@
+version: 0.2
+
+# Frontend buildspec for AWS CodeBuild
+# This buildspec builds the React frontend application and prepares it for deployment to S3
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo "Installing dependencies..."
+      - cd frontend
+      - npm ci
+      - echo "Dependencies installed successfully"
+
+  pre_build:
+    commands:
+      - echo "Running tests and generating reports..."
+      - npm run test:coverage
+      - echo "Tests completed successfully"
+
+  build:
+    commands:
+      - echo "Building React application..."
+      - npm run build
+      - echo "Build completed successfully"
+      - ls -la dist/
+
+  post_build:
+    commands:
+      - echo "Preparing artifacts for deployment..."
+      - echo "Build completed at $(date)"
+
+artifacts:
+  files:
+    - '**/*'
+  base-directory: frontend/dist
+  name: frontend-build-$(date +%Y%m%d-%H%M%S)
+
+reports:
+  frontend-test-results:
+    files:
+      - 'junit.xml'
+    base-directory: frontend
+    file-format: JUNITXML
+  
+  frontend-coverage-report:
+    files:
+      - 'coverage/cobertura-coverage.xml'
+    base-directory: frontend
+    file-format: COBERTURAXML
+
+cache:
+  paths:
+    - 'frontend/node_modules/**/*'

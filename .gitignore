@@ -71,6 +71,7 @@ typings/
 # dotenv environment variables file
 .env
 .env.test
+.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -103,16 +104,28 @@ dist
 # TernJS port file
 .tern-port
 
+# macOS
 .DS_Store
+
+# IDE
 .vscode/
 
-package-lock.json
+# Test results
 junit.xml
 integration-test-report.xml
+test-results/
 
+# Python
 .venv
-.vscode
 __pycache__
 .pytest_cache
 results-out.xml
-.DS_Store
+
+# Build outputs
+frontend/dist/
+backend/dist/
+infrastructure/cdk.out/
+
+# SAM
+.aws-sam/
+samconfig.toml

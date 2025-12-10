@@ -1,0 +1,350 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Backend CI/CD Pipeline for Hotel Management Application - Lambda + API Gateway + DynamoDB
+
+Parameters:
+  GitHubConnectionArn:
+    Type: String
+    Description: ARN of the CodeConnections connection to GitHub
+    AllowedPattern: arn:aws:codeconnections:[a-z0-9-]+:[0-9]{12}:connection/[a-f0-9-]+
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository in format owner/repo
+    Default: your-username/your-repo
+  
+  GitHubBranch:
+    Type: String
+    Description: GitHub branch to track
+    Default: main
+  
+  BaseInfraStackName:
+    Type: String
+    Description: Name of the base infrastructure stack
+    Default: hotel-base-infra
+  
+  BackendStackName:
+    Type: String
+    Description: Name of the backend CloudFormation stack to deploy
+    Default: hotel-backend
+  
+  Environment:
+    Type: String
+    Description: Environment name for the deployment
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  
+  HotelName:
+    Type: String
+    Description: Name of the hotel to display in the application
+    Default: Hotel Yorba
+
+Resources:
+  # ========================================================================
+  # CodeBuild Projects
+  # ========================================================================
+
+  # Test Project - Runs unit tests and property-based tests
+  BackendTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-backend-test
+      Description: Run backend unit tests and property-based tests
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildBackEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd backend
+                - npm ci
+            pre_build:
+              commands:
+                - echo "Running tests..."
+                - npm run test
+          reports:
+            backend-test-results:
+              files:
+                - 'test-results/junit.xml'
+              base-directory: backend
+              file-format: JUNITXML
+            backend-coverage-report:
+              files:
+                - 'coverage/cobertura-coverage.xml'
+              base-directory: backend
+              file-format: COBERTURAXML
+          cache:
+            paths:
+              - 'backend/node_modules/**/*'
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_SOURCE_CACHE
+          - LOCAL_CUSTOM_CACHE
+      Tags:
+        - Key: Purpose
+          Value: Backend Testing
+
+  # Validate Project - Validates CloudFormation templates and runs cfn_nag
+  BackendValidateProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-backend-validate
+      Description: Validate CloudFormation templates and run security checks
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildBackEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                ruby: 3.1
+              commands:
+                - echo "Installing cfn_nag..."
+                - gem install cfn-nag
+            build:
+              commands:
+                - echo "Validating CloudFormation templates..."
+                - cd backend
+                - aws cloudformation validate-template --template-body file://backend.yml
+                - echo "Running cfn_nag security checks..."
+                - cfn_nag_scan --input-path backend.yml
+                - echo "Validation completed successfully"
+      Tags:
+        - Key: Purpose
+          Value: Backend Validation
+
+  # Build Project - Builds Lambda functions and prepares deployment artifacts
+  BackendBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-backend-build
+      Description: Build Lambda functions and prepare CloudFormation artifacts
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildBackEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd backend
+                - npm ci
+            build:
+              commands:
+                - echo "Building Lambda functions..."
+                - npm run build
+                - echo "Creating deployment package..."
+                - mkdir -p deployment-package
+                - cp -r dist deployment-package/
+                - cp -r node_modules deployment-package/
+                - cp package.json deployment-package/
+                - cd deployment-package
+                - zip -r ../lambda-deployment.zip . -x "*.git*" "*.test.*" "*.spec.*"
+                - cd ..
+                - ls -lh lambda-deployment.zip
+                - echo "Preparing CloudFormation template..."
+                - cp backend.yml backend-packaged.yml
+                - echo "Build completed successfully"
+          artifacts:
+            files:
+              - backend/backend-packaged.yml
+              - backend/lambda-deployment.zip
+            name: backend-build-$(date +%Y%m%d-%H%M%S)
+          cache:
+            paths:
+              - 'backend/node_modules/**/*'
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_SOURCE_CACHE
+          - LOCAL_CUSTOM_CACHE
+      Tags:
+        - Key: Purpose
+          Value: Backend Build
+
+  # ========================================================================
+  # CodePipeline
+  # ========================================================================
+
+  BackendPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: hotel-backend-pipeline
+      RoleArn:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodePipelineRoleArn'
+      ArtifactStore:
+        Type: S3
+        Location:
+          Fn::ImportValue: !Sub '${BaseInfraStackName}-PipelineArtifactsBucket'
+      PipelineType: V2
+      Triggers:
+        - ProviderType: CodeStarSourceConnection
+          GitConfiguration:
+            SourceActionName: GitHub_Source
+            Push:
+              - FilePaths:
+                  Includes:
+                    - backend/**
+      Stages:
+        # Source Stage
+        - Name: Source
+          Actions:
+            - Name: GitHub_Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+                DetectChanges: false
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        # Test Stage
+        - Name: Test
+          Actions:
+            - Name: Run_Tests
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BackendTestProject
+              InputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        # Validate Stage
+        - Name: Validate
+          Actions:
+            - Name: Validate_CloudFormation
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BackendValidateProject
+              InputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        # Build Stage
+        - Name: Build
+          Actions:
+            - Name: Build_Lambda_Functions
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BackendBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+        # Deploy Stage
+        - Name: Deploy
+          Actions:
+            - Name: Deploy_CloudFormation_Stack
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                StackName: !Ref BackendStackName
+                TemplatePath: BuildOutput::backend/backend-packaged.yml
+                Capabilities: CAPABILITY_IAM,CAPABILITY_NAMED_IAM
+                RoleArn:
+                  Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildBackEndRoleArn'
+                ParameterOverrides: !Sub |
+                  {
+                    "HotelName": "${HotelName}",
+                    "Environment": "${Environment}"
+                  }
+                OutputFileName: stack-outputs.json
+              InputArtifacts:
+                - Name: BuildOutput
+              OutputArtifacts:
+                - Name: DeployOutput
+              RunOrder: 1
+
+      Tags:
+        - Key: Purpose
+          Value: Backend CI/CD
+
+Outputs:
+  PipelineName:
+    Description: Name of the backend CI/CD pipeline
+    Value: !Ref BackendPipeline
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineName'
+
+  PipelineArn:
+    Description: ARN of the backend CI/CD pipeline
+    Value: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${BackendPipeline}'
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineArn'
+
+  TestProjectName:
+    Description: Name of the backend test CodeBuild project
+    Value: !Ref BackendTestProject
+
+  ValidateProjectName:
+    Description: Name of the backend validate CodeBuild project
+    Value: !Ref BackendValidateProject
+
+  BuildProjectName:
+    Description: Name of the backend build CodeBuild project
+    Value: !Ref BackendBuildProject
+
+  BackendStackName:
+    Description: Name of the backend CloudFormation stack
+    Value: !Ref BackendStackName

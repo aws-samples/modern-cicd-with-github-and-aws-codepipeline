@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Frontend CI/CD Pipeline for Hotel Management Application - React + S3 + CloudFront
+
+Parameters:
+  GitHubConnectionArn:
+    Type: String
+    Description: ARN of the CodeConnections connection to GitHub
+    AllowedPattern: arn:aws:codeconnections:[a-z0-9-]+:[0-9]{12}:connection/[a-f0-9-]+
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHub repository in format owner/repo
+    Default: your-username/your-repo
+  
+  GitHubBranch:
+    Type: String
+    Description: GitHub branch to track
+    Default: main
+  
+  BaseInfraStackName:
+    Type: String
+    Description: Name of the base infrastructure stack
+    Default: hotel-base-infra
+
+Resources:
+  # ========================================================================
+  # CodeBuild Projects
+  # ========================================================================
+
+  # Test Project - Runs unit tests and property-based tests
+  FrontendTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-frontend-test
+      Description: Run frontend unit tests and property-based tests
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildFrontEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd frontend
+                - npm ci
+            pre_build:
+              commands:
+                - echo "Running tests..."
+                - npm run test:coverage
+          reports:
+            frontend-test-results:
+              files:
+                - 'junit.xml'
+              base-directory: frontend
+              file-format: JUNITXML
+            frontend-coverage-report:
+              files:
+                - 'coverage/cobertura-coverage.xml'
+              base-directory: frontend
+              file-format: COBERTURAXML
+          cache:
+            paths:
+              - 'frontend/node_modules/**/*'
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_SOURCE_CACHE
+          - LOCAL_CUSTOM_CACHE
+      Tags:
+        - Key: Purpose
+          Value: Frontend Testing
+
+  # Build Project - Builds React application for production
+  FrontendBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-frontend-build
+      Description: Build React application for production
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildFrontEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: VITE_API_URL
+            Value: !Sub '{{resolve:ssm:/hotelapp/api/url:1}}'
+            Type: PARAMETER_STORE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                nodejs: 18
+              commands:
+                - echo "Installing dependencies..."
+                - cd frontend
+                - npm ci
+            build:
+              commands:
+                - echo "Building React application..."
+                - npm run build
+                - echo "Build completed successfully"
+                - ls -la dist/
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: frontend/dist
+            name: frontend-build-$(date +%Y%m%d-%H%M%S)
+          cache:
+            paths:
+              - 'frontend/node_modules/**/*'
+      Cache:
+        Type: LOCAL
+        Modes:
+          - LOCAL_SOURCE_CACHE
+          - LOCAL_CUSTOM_CACHE
+      Tags:
+        - Key: Purpose
+          Value: Frontend Build
+
+  # Deploy Project - Deploys to S3 and invalidates CloudFront
+  FrontendDeployProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: hotel-frontend-deploy
+      Description: Deploy frontend to S3 and invalidate CloudFront
+      ServiceRole:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodeBuildFrontEndRoleArn'
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: FRONTEND_BUCKET
+            Value:
+              Fn::ImportValue: !Sub '${BaseInfraStackName}-FrontendBucket'
+          - Name: CLOUDFRONT_DISTRIBUTION_ID
+            Value:
+              Fn::ImportValue: !Sub '${BaseInfraStackName}-CloudFrontDistributionId'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                python: 3.11
+              commands:
+                - echo "AWS CLI already installed in standard:7.0"
+            build:
+              commands:
+                - echo "Deploying to S3..."
+                - aws s3 sync . s3://${FRONTEND_BUCKET}/ --delete --cache-control "public, max-age=31536000, immutable" --exclude "index.html"
+                - aws s3 cp index.html s3://${FRONTEND_BUCKET}/index.html --cache-control "public, max-age=0, must-revalidate"
+                - echo "Creating CloudFront invalidation..."
+                - INVALIDATION_ID=$(aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --paths "/*" --query 'Invalidation.Id' --output text)
+                - echo "Invalidation created with ID: ${INVALIDATION_ID}"
+                - echo "Waiting for invalidation to complete..."
+                - aws cloudfront wait invalidation-completed --distribution-id ${CLOUDFRONT_DISTRIBUTION_ID} --id ${INVALIDATION_ID}
+                - echo "Deployment completed successfully"
+      Tags:
+        - Key: Purpose
+          Value: Frontend Deployment
+
+  # ========================================================================
+  # CodePipeline
+  # ========================================================================
+
+  FrontendPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: hotel-frontend-pipeline
+      RoleArn:
+        Fn::ImportValue: !Sub '${BaseInfraStackName}-CodePipelineRoleArn'
+      ArtifactStore:
+        Type: S3
+        Location:
+          Fn::ImportValue: !Sub '${BaseInfraStackName}-PipelineArtifactsBucket'
+      PipelineType: V2
+      Triggers:
+        - ProviderType: CodeStarSourceConnection
+          GitConfiguration:
+            SourceActionName: GitHub_Source
+            Push:
+              - FilePaths:
+                  Includes:
+                    - frontend/**
+      Stages:
+        # Source Stage
+        - Name: Source
+          Actions:
+            - Name: GitHub_Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: !Ref GitHubRepo
+                BranchName: !Ref GitHubBranch
+                DetectChanges: false
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        # Test Stage
+        - Name: Test
+          Actions:
+            - Name: Run_Tests
+              ActionTypeId:
+                Category: Test
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref FrontendTestProject
+              InputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+
+        # Build Stage
+        - Name: Build
+          Actions:
+            - Name: Build_React_App
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref FrontendBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+        # Deploy Stage
+        - Name: Deploy
+          Actions:
+            - Name: Deploy_to_S3_and_CloudFront
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref FrontendDeployProject
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 1
+
+      Tags:
+        - Key: Purpose
+          Value: Frontend CI/CD
+
+Outputs:
+  PipelineName:
+    Description: Name of the frontend CI/CD pipeline
+    Value: !Ref FrontendPipeline
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineName'
+
+  PipelineArn:
+    Description: ARN of the frontend CI/CD pipeline
+    Value: !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${FrontendPipeline}'
+    Export:
+      Name: !Sub '${AWS::StackName}-PipelineArn'
+
+  TestProjectName:
+    Description: Name of the frontend test CodeBuild project
+    Value: !Ref FrontendTestProject
+
+  BuildProjectName:
+    Description: Name of the frontend build CodeBuild project
+    Value: !Ref FrontendBuildProject
+
+  DeployProjectName:
+    Description: Name of the frontend deploy CodeBuild project
+    Value: !Ref FrontendDeployProject
+
+  CloudFrontURL:
+    Description: CloudFront distribution URL for the frontend
+    Value:
+      Fn::ImportValue: !Sub '${BaseInfraStackName}-CloudFrontURL'

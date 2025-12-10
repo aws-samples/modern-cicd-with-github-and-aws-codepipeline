@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Hotel Management Application - Backend API
+  SAM template for local development and AWS deployment
+
+# Global configuration for all Lambda functions
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        HOTEL_NAME: !Ref HotelName
+        DYNAMODB_TABLE_NAME: !Ref RoomsTable
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+        # Local development overrides (will be overridden by env.json)
+        DYNAMODB_ENDPOINT: ''
+        AWS_REGION: 'us-west-2'
+
+Parameters:
+  HotelName:
+    Type: String
+    Default: 'Hotel Yorba'
+    Description: Name of the hotel to display in the application
+  
+  Environment:
+    Type: String
+    Default: 'local'
+    AllowedValues:
+      - local
+      - dev
+      - staging
+      - prod
+    Description: Environment name for the deployment
+
+Resources:
+  # DynamoDB Table for storing room data
+  RoomsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'Rooms-${Environment}'
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: HotelManagement
+
+  # API Gateway REST API
+  HotelApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Description: Hotel Management API
+      EndpointConfiguration:
+        Type: REGIONAL
+      TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # Single Lambda Function: API Router
+  # Handles all API requests and routes them internally
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'hotel-api-${Environment}'
+      CodeUri: ./
+      Handler: dist/handlers/router.handler
+      Description: Main API handler - routes all requests
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RoomsTable
+      Events:
+        # Catch-all route for all API requests
+        ApiProxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HotelApi
+            Path: /api/{proxy+}
+            Method: ANY
+      Tags:
+        Environment: !Ref Environment
+        Function: ApiRouter
+
+  # CloudWatch Log Group for the API function
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/hotel-api-${Environment}'
+      RetentionInDays: 7
+
+Outputs:
+  HotelApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${HotelApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  HotelApiId:
+    Description: API Gateway ID
+    Value: !Ref HotelApi
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiId'
+
+  RoomsTableName:
+    Description: DynamoDB table name for rooms
+    Value: !Ref RoomsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-RoomsTable'
+
+  RoomsTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt RoomsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoomsTableArn'
+
+  ApiFunctionArn:
+    Description: API Lambda Function ARN
+    Value: !GetAtt ApiFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiFunctionArn'

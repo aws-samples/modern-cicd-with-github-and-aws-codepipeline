@@ -1,0 +1,154 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * *'  # Runs nightly at 3 AM UTC
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Setup Chrome browser and ChromeDriver
+        uses: browser-actions/setup-chrome@latest
+        id: setup-chrome
+        with:
+          chrome-version: 'stable'
+          install-chromedriver: true
+
+      - name: Verify Chrome version
+        run: |
+          ${{ steps.setup-chrome.outputs.chrome-path }} --version
+      
+      - name: Symlink Chrome binary to default path
+        run: |
+          sudo ln -sf ${{ steps.setup-chrome.outputs.chrome-path }} /usr/bin/google-chrome
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up environment variables
+        run: |
+          echo "AWS_ACCESS_KEY_ID=fakeMyKeyId" >> $GITHUB_ENV
+          echo "AWS_SECRET_ACCESS_KEY=fakeSecretAccessKey" >> $GITHUB_ENV
+          echo "AWS_REGION=us-west-2" >> $GITHUB_ENV
+          echo "AWS_DEFAULT_REGION=us-west-2" >> $GITHUB_ENV
+          echo "DYNAMODB_ENDPOINT=http://127.0.0.1:8000" >> $GITHUB_ENV
+          echo "DYNAMODB_TABLE_NAME=RoomsTest" >> $GITHUB_ENV
+          echo "VITE_API_URL=http://localhost:3000" >> $GITHUB_ENV
+          echo "VITE_HOTEL_NAME=AWS Hotel" >> $GITHUB_ENV
+          echo "CI=true" >> $GITHUB_ENV
+
+      - name: Start DynamoDB Local
+        run: |
+          docker run -d -p 8000:8000 amazon/dynamodb-local
+          echo "✅ DynamoDB Local started"
+
+      - name: Wait for DynamoDB to become ready
+        run: |
+          echo "⏳ Waiting for DynamoDB Local to be ready..."
+          until aws dynamodb list-tables --endpoint-url http://127.0.0.1:8000 --region us-west-2; do
+            echo "Waiting for local DynamoDB..."
+            sleep 2
+          done
+          echo "✅ DynamoDB Local is ready"
+
+      - name: Setup DynamoDB tables
+        run: |
+          echo "🔧 Creating DynamoDB tables..."
+          npm run dynamodb:setup
+          echo "✅ DynamoDB tables created"
+
+      - name: Build backend
+        run: |
+          echo "🔨 Building backend..."
+          npm run build:backend
+          echo "✅ Backend built"
+
+      - name: Start backend (SAM Local)
+        run: |
+          echo "🚀 Starting SAM Local API..."
+          cd backend
+          sam local start-api --port 3000 --env-vars env.json --parameter-overrides 'Environment=local HotelName="AWS Hotel"' &
+          echo "⏳ Waiting for SAM Local to start..."
+          sleep 15
+          echo "✅ SAM Local started"
+
+      - name: Verify backend is running
+        run: |
+          echo "🔍 Checking if backend is responding..."
+          curl -f http://localhost:3000/api/config || (echo "❌ Backend not responding" && exit 1)
+          echo "✅ Backend is responding"
+
+      - name: Build frontend
+        run: |
+          echo "🔨 Building frontend..."
+          npm run build:frontend
+          echo "✅ Frontend built"
+
+      - name: Start frontend dev server
+        run: |
+          echo "🚀 Starting frontend dev server..."
+          npm run dev:frontend &
+          echo "⏳ Waiting for frontend to start..."
+          sleep 10
+          echo "✅ Frontend started"
+
+      - name: Verify frontend is running
+        run: |
+          echo "🔍 Checking if frontend is responding..."
+          curl -f http://localhost:5173 || (echo "❌ Frontend not responding" && exit 1)
+          echo "✅ Frontend is responding"
+
+      - name: Run integration tests
+        env:
+          CHROME_BIN: /opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome
+        run: |
+          echo "🧪 Running integration tests..."
+          npm run test:integration
+          echo "✅ Integration tests completed"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-screenshots
+          path: test/integration/screenshots/
+          retention-days: 30
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up..."
+          docker stop $(docker ps -q) || true
+          pkill -f "sam local" || true
+          pkill -f "vite" || true
+          echo "✅ Cleanup complete"

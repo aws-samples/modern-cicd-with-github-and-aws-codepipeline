@@ -1,0 +1,349 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Hotel Management Application - Backend Infrastructure
+  CloudFormation template for serverless backend deployment
+  Defines DynamoDB table, Lambda functions, API Gateway, and supporting resources
+
+Parameters:
+  HotelName:
+    Type: String
+    Default: 'Hotel Yorba'
+    Description: Name of the hotel to display in the application
+    MinLength: 1
+    MaxLength: 100
+  
+  Environment:
+    Type: String
+    Default: 'dev'
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name for the deployment
+
+Metadata:
+  cfn_nag:
+    rules_to_suppress:
+      - id: W89
+        reason: Lambda functions do not require VPC for this workshop application
+      - id: W92
+        reason: Reserved concurrent executions not required for workshop demo
+
+Resources:
+  # ============================================================================
+  # DynamoDB Table
+  # ============================================================================
+  
+  RoomsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'Rooms-${Environment}-${AWS::StackName}'
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: HotelManagement
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ============================================================================
+  # Lambda Execution Role
+  # ============================================================================
+  
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'hotel-lambda-execution-${Environment}-${AWS::Region}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:DeleteItem'
+                  - 'dynamodb:Scan'
+                  - 'dynamodb:Query'
+                Resource: !GetAtt RoomsTable.Arn
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: HotelManagement
+
+  # ============================================================================
+  # CloudWatch Log Groups
+  # ============================================================================
+  
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/hotel-api-${Environment}'
+      RetentionInDays: 7
+
+  # ============================================================================
+  # Lambda Functions
+  # ============================================================================
+  
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'hotel-api-${Environment}'
+      Description: Main API handler - routes all requests to appropriate handlers
+      Runtime: nodejs20.x
+      Handler: dist/handlers/router.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        # For deployment, this will be replaced with actual code
+        # For now, using inline code as placeholder
+        ZipFile: |
+          exports.handler = async (event) => {
+            return {
+              statusCode: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS'
+              },
+              body: JSON.stringify({ message: 'Placeholder - deploy with actual code' })
+            };
+          };
+      Environment:
+        Variables:
+          HOTEL_NAME: !Ref HotelName
+          DYNAMODB_TABLE_NAME: !Ref RoomsTable
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+          ENVIRONMENT: !Ref Environment
+      MemorySize: 512
+      Timeout: 10
+      Architectures:
+        - x86_64
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Function
+          Value: ApiRouter
+
+  # Lambda Permission for API Gateway
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ApiFunction
+      Action: 'lambda:InvokeFunction'
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HotelApi}/*'
+
+  # ============================================================================
+  # API Gateway
+  # ============================================================================
+  
+  HotelApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub 'hotel-api-${Environment}'
+      Description: Hotel Management REST API
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Application
+          Value: HotelManagement
+
+  # API Gateway Resources
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref HotelApi
+      ParentId: !GetAtt HotelApi.RootResourceId
+      PathPart: 'api'
+
+  ProxyResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref HotelApi
+      ParentId: !Ref ApiResource
+      PathPart: '{proxy+}'
+
+  # OPTIONS method for CORS preflight
+  OptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref HotelApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,POST,PUT,DELETE,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # ANY method for all other requests
+  ProxyMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref HotelApi
+      ResourceId: !Ref ProxyResource
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ApiFunction.Arn}/invocations'
+        IntegrationResponses:
+          - StatusCode: 200
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProxyMethod
+      - OptionsMethod
+    Properties:
+      RestApiId: !Ref HotelApi
+      Description: !Sub 'Deployment for ${Environment} environment'
+
+  # API Gateway Stage
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref HotelApi
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref Environment
+      Description: !Sub '${Environment} stage for Hotel API'
+      TracingEnabled: true
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+          MetricsEnabled: true
+          ThrottlingBurstLimit: 5000
+          ThrottlingRateLimit: 10000
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Log Group for API Gateway
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/hotel-api-${Environment}'
+      RetentionInDays: 7
+
+  # API Gateway Account (for CloudWatch logging)
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  # IAM Role for API Gateway CloudWatch Logging
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+
+# ============================================================================
+# Outputs
+# ============================================================================
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL for the application
+    Value: !Sub 'https://${HotelApi}.execute-api.${AWS::Region}.amazonaws.com/${Environment}'
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiUrl'
+
+  ApiId:
+    Description: API Gateway ID
+    Value: !Ref HotelApi
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiId'
+
+  ApiStage:
+    Description: API Gateway stage name
+    Value: !Ref Environment
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiStage'
+
+  RoomsTableName:
+    Description: DynamoDB table name for rooms
+    Value: !Ref RoomsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-RoomsTable'
+
+  RoomsTableArn:
+    Description: DynamoDB table ARN
+    Value: !GetAtt RoomsTable.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoomsTableArn'
+
+  ApiFunctionArn:
+    Description: API Lambda Function ARN
+    Value: !GetAtt ApiFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiFunctionArn'
+
+  ApiFunctionName:
+    Description: API Lambda Function name
+    Value: !Ref ApiFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-ApiFunctionName'
+
+  LambdaExecutionRoleArn:
+    Description: Lambda execution role ARN
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRoleArn'
