@@ -38,14 +38,14 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Setup Python (for AWS SAM)
+      - name: Setup Python (for AWS SAM and cfn-lint)
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install AWS SAM CLI
+      - name: Install AWS SAM CLI and cfn-lint
         run: |
-          pip install aws-sam-cli
+          pip install aws-sam-cli cfn-lint
 
       - name: Install dependencies
         run: npm ci
@@ -84,14 +84,14 @@ jobs:
           cd backend
           sam validate --lint
 
-      - name: Validate CloudFormation template
+      - name: Validate CloudFormation templates with cfn-lint
         run: |
           cd backend
-          aws cloudformation validate-template --template-body file://backend.yml || true
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || 'fake-key-id' }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || 'fake-secret-key' }}
-          AWS_DEFAULT_REGION: us-west-2
+          echo "🔍 Validating CloudFormation templates with cfn-lint (no AWS credentials required)..."
+          cfn-lint backend.yml --info
+          if [ -f template.yaml ]; then
+            cfn-lint template.yaml --info
+          fi
 
       - name: Build SAM application
         run: |
