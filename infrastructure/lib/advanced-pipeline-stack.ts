@@ -1,7 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
+import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
+import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cloudwatch_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { Construct } from 'constructs';
 import { BackendStack } from './backend-stack';
 
@@ -13,7 +18,6 @@ export interface AdvancedPipelineStackProps extends cdk.StackProps {
   codeBuildFrontEndRole: iam.IRole;
   codeBuildBackEndRole: iam.IRole;
   codeBuildIntTestRole: iam.IRole;
-  codePipelineRole: iam.IRole;
   codeConnectionArn: string;
   githubRepo: string;
   githubBranch: string;
@@ -21,34 +25,109 @@ export interface AdvancedPipelineStackProps extends cdk.StackProps {
 
 /**
  * Advanced Pipeline Stack (Lab 5 Accelerator)
- * 
- * Creates an advanced CI/CD pipeline with:
- * - Automatic rollbacks on failure
- * - Manual approval gates
- * - Integration tests
- * - Multi-environment deployments
- * - Lambda versioning and aliases
- * - API Gateway stages
- * 
- * This stack corresponds to Workshop Lab 5 and provides an accelerated
- * way to set up advanced pipeline features.
- * 
- * Workshop Module: Lab 5 - Advanced Features
+ *
+ * Demonstrates the pipeline-refinement concepts from Lab 5:
+ * - A manual approval gate before the production deploy
+ * - SNS notifications for approvals and alarms
+ * - A CloudWatch alarm on backend Lambda errors that can drive rollback decisions
+ *
+ * Deeper Lab 5 topics (Lambda aliases/versions, API Gateway stages, and
+ * CodePipeline stage-level automatic rollback) are covered in the manual lab
+ * instructions. CDK creates a dedicated pipeline role in this stack to avoid
+ * cross-stack cycles.
+ *
+ * Workshop Module: Lab 5 - Pipeline Refinements
  */
 export class AdvancedPipelineStack extends cdk.Stack {
+  public readonly pipeline: codepipeline.Pipeline;
+  public readonly notificationTopic: sns.Topic;
+
   constructor(scope: Construct, id: string, props: AdvancedPipelineStackProps) {
     super(scope, id, props);
 
-    // This is a placeholder for the advanced pipeline stack
-    // In a complete implementation, this would create a pipeline with:
-    // - Rollback triggers
-    // - Manual approval actions
-    // - Integration test stages
-    // - Multi-environment support
+    // Notifications for approvals and alarms
+    this.notificationTopic = new sns.Topic(this, 'PipelineNotifications', {
+      topicName: 'hotel-pipeline-notifications',
+      displayName: 'Hotel pipeline approvals and alarms',
+    });
 
-    new cdk.CfnOutput(this, 'AdvancedPipelineStackInfo', {
-      value: 'Advanced pipeline stack created - implement advanced features here',
-      description: 'Advanced pipeline stack status',
+    // Alarm on backend Lambda errors (referenced by function name to avoid a
+    // cross-stack construct dependency). Drives rollback/awareness in Lab 5.
+    const lambdaErrors = new cloudwatch.Metric({
+      namespace: 'AWS/Lambda',
+      metricName: 'Errors',
+      dimensionsMap: { FunctionName: 'hotel-getRooms' },
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(1),
+    });
+
+    const errorAlarm = new cloudwatch.Alarm(this, 'BackendErrorsAlarm', {
+      alarmName: 'hotel-backend-errors',
+      metric: lambdaErrors,
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    errorAlarm.addAlarmAction(new cloudwatch_actions.SnsAction(this.notificationTopic));
+
+    // Pipeline with a manual approval gate before deploying the backend.
+    const sourceOutput = new codepipeline.Artifact('SourceOutput');
+
+    this.pipeline = new codepipeline.Pipeline(this, 'AdvancedPipeline', {
+      pipelineName: 'hotel-advanced-pipeline',
+      artifactBucket: props.artifactsBucket,
+      stages: [
+        {
+          stageName: 'Source',
+          actions: [
+            new codepipeline_actions.CodeStarConnectionsSourceAction({
+              actionName: 'GitHub_Source',
+              owner: props.githubRepo.split('/')[0],
+              repo: props.githubRepo.split('/')[1],
+              branch: props.githubBranch,
+              connectionArn: props.codeConnectionArn,
+              output: sourceOutput,
+              triggerOnPush: true,
+            }),
+          ],
+        },
+        {
+          stageName: 'Approve',
+          actions: [
+            new codepipeline_actions.ManualApprovalAction({
+              actionName: 'Approve_Production_Deploy',
+              notificationTopic: this.notificationTopic,
+              additionalInformation: 'Approve to deploy the backend stack to production.',
+            }),
+          ],
+        },
+        {
+          stageName: 'Deploy_Backend',
+          actions: [
+            new codepipeline_actions.CloudFormationCreateUpdateStackAction({
+              actionName: 'Deploy_Backend_Stack',
+              stackName: props.backendStack.stackName,
+              templatePath: sourceOutput.atPath('backend/backend.yml'),
+              adminPermissions: true,
+              parameterOverrides: {
+                HotelName: 'Hotel Yorba',
+                Environment: 'prod',
+              },
+            }),
+          ],
+        },
+      ],
+    });
+
+    new cdk.CfnOutput(this, 'PipelineName', {
+      value: this.pipeline.pipelineName,
+      description: 'Advanced CI/CD pipeline name',
+    });
+
+    new cdk.CfnOutput(this, 'NotificationTopicArn', {
+      value: this.notificationTopic.topicArn,
+      description: 'SNS topic for pipeline approvals and alarms',
     });
   }
 }

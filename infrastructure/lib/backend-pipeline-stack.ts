@@ -11,7 +11,6 @@ export interface BackendPipelineStackProps extends cdk.StackProps {
   backendStack: BackendStack;
   artifactsBucket: s3.IBucket;
   codeBuildRole: iam.IRole;
-  codePipelineRole: iam.IRole;
   codeConnectionArn: string;
   githubRepo: string;
   githubBranch: string;
@@ -73,9 +72,13 @@ export class BackendPipelineStack extends cdk.Stack {
     const testOutput = new codepipeline.Artifact('TestOutput');
     const validateOutput = new codepipeline.Artifact('ValidateOutput');
 
+    // Let CDK create a dedicated, least-privilege pipeline role in this stack.
+    // Reusing the shared BaseInfra CodePipelineRole here causes a cyclic
+    // dependency: CDK adds grants to that role (in BaseInfraStack) referencing
+    // the CodeBuild projects in this stack, while this stack already depends on
+    // BaseInfraStack.
     this.pipeline = new codepipeline.Pipeline(this, 'BackendPipeline', {
       pipelineName: 'hotel-backend-pipeline',
-      role: props.codePipelineRole,
       artifactBucket: props.artifactsBucket,
       stages: [
         {
