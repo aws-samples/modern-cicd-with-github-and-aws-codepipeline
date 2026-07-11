@@ -41,10 +41,19 @@ export class DeploymentStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DeploymentStackProps) {
     super(scope, id, props);
 
+    // Import the shared CodeBuild role by ARN (mutable) so project-scoped grants
+    // land in this stack rather than BaseInfraStack — avoids a cyclic dependency.
+    const codeBuildFrontEndRole = iam.Role.fromRoleArn(
+      this,
+      'ImportedDeploymentFrontEndRole',
+      props.codeBuildFrontEndRole.roleArn,
+      { mutable: true },
+    );
+
     const frontendBuildProject = new codebuild.PipelineProject(this, 'FullStackFrontendBuild', {
       projectName: 'hotel-fullstack-frontend-build',
       description: 'Build the React frontend for the full-stack deployment pipeline',
-      role: props.codeBuildFrontEndRole,
+      role: codeBuildFrontEndRole,
       environment: {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         computeType: codebuild.ComputeType.SMALL,

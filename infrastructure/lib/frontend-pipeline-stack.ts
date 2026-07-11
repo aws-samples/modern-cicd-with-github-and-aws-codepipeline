@@ -41,11 +41,20 @@ export class FrontendPipelineStack extends cdk.Stack {
     // CodeBuild Projects
     // ========================================================================
 
+    // Import the shared CodeBuild role by ARN. Using the live construct from
+    // BaseInfraStack causes a cyclic dependency, because CDK adds project-scoped
+    // grants to that role (in BaseInfraStack) that reference the CodeBuild
+    // projects in this stack. Importing with mutable:true puts those grants in
+    // THIS stack instead, keeping the reference one-directional.
+    const codeBuildRole = iam.Role.fromRoleArn(this, 'ImportedFrontendCodeBuildRole', props.codeBuildRole.roleArn, {
+      mutable: true,
+    });
+
     // Test project
     const testProject = new codebuild.PipelineProject(this, 'FrontendTestProject', {
       projectName: 'hotel-frontend-test',
       description: 'Run frontend unit tests and property-based tests',
-      role: props.codeBuildRole,
+      role: codeBuildRole,
       environment: {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         computeType: codebuild.ComputeType.SMALL,
@@ -57,7 +66,7 @@ export class FrontendPipelineStack extends cdk.Stack {
     const buildProject = new codebuild.PipelineProject(this, 'FrontendBuildProject', {
       projectName: 'hotel-frontend-build',
       description: 'Build React application for production',
-      role: props.codeBuildRole,
+      role: codeBuildRole,
       environment: {
         buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
         computeType: codebuild.ComputeType.SMALL,
