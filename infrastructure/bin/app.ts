@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { BaseInfraStack } from '../lib/base-infra-stack';
 import { BackendStack } from '../lib/backend-stack';
-import { FrontendStack } from '../lib/frontend-stack';
 import { FrontendPipelineStack } from '../lib/frontend-pipeline-stack';
 import { BackendPipelineStack } from '../lib/backend-pipeline-stack';
 import { DeploymentStack } from '../lib/deployment-stack';
@@ -11,10 +9,10 @@ import { AdvancedPipelineStack } from '../lib/advanced-pipeline-stack';
 
 const app = new cdk.App();
 
-// Get environment configuration
+// Environment configuration
 const env = {
   account: process.env.CDK_DEFAULT_ACCOUNT,
-  region: process.env.CDK_DEFAULT_REGION || 'us-west-2',
+  region: process.env.CDK_DEFAULT_REGION || 'us-east-1',
 };
 
 const hotelName = app.node.tryGetContext('hotelName') || 'Hotel Yorba';
@@ -23,101 +21,62 @@ const githubRepo = app.node.tryGetContext('githubRepo');
 const githubBranch = app.node.tryGetContext('githubBranch') || 'main';
 const codeConnectionArn = app.node.tryGetContext('codeConnectionArn');
 
-// Base Infrastructure Stack (Lab 1 prerequisite)
-// Creates IAM roles, S3 buckets, and CloudFront distribution
-const baseInfraStack = new BaseInfraStack(app, 'HotelBaseInfraStack', {
-  env,
-  description: 'Base infrastructure for Hotel Management Application - IAM roles, S3, CloudFront',
-});
+// NOTE: The base infrastructure (S3 buckets, IAM roles, CloudFront) is created
+// during workshop provisioning by static/cfn/base-infra.yaml and published to
+// SSM under /hotelapp/*. The CDK accelerator therefore does NOT recreate it —
+// doing so would collide with the already-provisioned resources. The pipeline
+// stacks below import those resources from SSM.
 
-// Backend Stack (Lab 3)
-// Creates DynamoDB, Lambda functions, and API Gateway
-const backendStack = new BackendStack(app, 'HotelBackendStack', {
+// Backend application stack (DynamoDB + Lambda + API Gateway). Optional direct
+// deploy of the backend; not required by the pipelines.
+new BackendStack(app, 'HotelBackendStack', {
   env,
-  description: 'Backend infrastructure for Hotel Management Application - DynamoDB, Lambda, API Gateway',
+  description: 'Backend application - DynamoDB, Lambda, API Gateway',
   hotelName,
   environment,
 });
 
-// Frontend Stack (Lab 2)
-// Creates S3 bucket and CloudFront distribution for React app
-// Note: This is an alternative to using the base-infra stack's frontend resources
-const frontendStack = new FrontendStack(app, 'HotelFrontendStack', {
-  env,
-  description: 'Frontend infrastructure for Hotel Management Application - S3, CloudFront with OAI',
-});
-
-// Optional: CI/CD Pipeline Stacks
-// These stacks are optional accelerators that correspond to workshop labs
-
+// CI/CD pipeline stacks (Labs 2-5). Only instantiated when the GitHub repo and
+// CodeConnection ARN are supplied as context. They import the provisioned base
+// infrastructure from SSM, so no BaseInfraStack dependency is needed.
 if (codeConnectionArn && githubRepo) {
-  // Frontend Pipeline Stack (Lab 2)
-  const frontendPipelineStack = new FrontendPipelineStack(app, 'HotelFrontendPipelineStack', {
+  new FrontendPipelineStack(app, 'HotelFrontendPipelineStack', {
     env,
     description: 'CI/CD pipeline for frontend - Lab 2 accelerator',
-    frontendBucket: baseInfraStack.frontendBucket,
-    cloudFrontDistribution: baseInfraStack.cloudFrontDistribution,
-    artifactsBucket: baseInfraStack.artifactsBucket,
-    codeBuildRole: baseInfraStack.codeBuildFrontEndRole,
     codeConnectionArn,
     githubRepo,
     githubBranch,
   });
-  frontendPipelineStack.addDependency(baseInfraStack);
 
-  // Backend Pipeline Stack (Lab 3)
-  const backendPipelineStack = new BackendPipelineStack(app, 'HotelBackendPipelineStack', {
+  new BackendPipelineStack(app, 'HotelBackendPipelineStack', {
     env,
     description: 'CI/CD pipeline for backend - Lab 3 accelerator',
-    backendStack,
-    artifactsBucket: baseInfraStack.artifactsBucket,
-    codeBuildRole: baseInfraStack.codeBuildBackEndRole,
+    environment,
     codeConnectionArn,
     githubRepo,
     githubBranch,
   });
-  backendPipelineStack.addDependency(baseInfraStack);
-  backendPipelineStack.addDependency(backendStack);
 
-  // Deployment Stack (Lab 4)
-  // Combines frontend and backend pipelines with deployment automation
-  const deploymentStack = new DeploymentStack(app, 'HotelDeploymentStack', {
+  new DeploymentStack(app, 'HotelDeploymentStack', {
     env,
-    description: 'Full deployment automation - Lab 4 accelerator',
-    frontendBucket: baseInfraStack.frontendBucket,
-    cloudFrontDistribution: baseInfraStack.cloudFrontDistribution,
-    backendStack,
-    artifactsBucket: baseInfraStack.artifactsBucket,
-    codeBuildFrontEndRole: baseInfraStack.codeBuildFrontEndRole,
-    codeBuildBackEndRole: baseInfraStack.codeBuildBackEndRole,
+    description: 'Full-stack deployment pipeline - Lab 4 accelerator',
+    environment,
     codeConnectionArn,
     githubRepo,
     githubBranch,
   });
-  deploymentStack.addDependency(baseInfraStack);
-  deploymentStack.addDependency(backendStack);
 
-  // Advanced Pipeline Stack (Lab 5)
-  // Adds rollbacks, gates, and advanced pipeline features
-  const advancedPipelineStack = new AdvancedPipelineStack(app, 'HotelAdvancedPipelineStack', {
+  new AdvancedPipelineStack(app, 'HotelAdvancedPipelineStack', {
     env,
     description: 'Advanced CI/CD features - Lab 5 accelerator',
-    frontendBucket: baseInfraStack.frontendBucket,
-    cloudFrontDistribution: baseInfraStack.cloudFrontDistribution,
-    backendStack,
-    artifactsBucket: baseInfraStack.artifactsBucket,
-    codeBuildFrontEndRole: baseInfraStack.codeBuildFrontEndRole,
-    codeBuildBackEndRole: baseInfraStack.codeBuildBackEndRole,
-    codeBuildIntTestRole: baseInfraStack.codeBuildIntTestRole,
+    environment,
     codeConnectionArn,
     githubRepo,
     githubBranch,
   });
-  advancedPipelineStack.addDependency(baseInfraStack);
-  advancedPipelineStack.addDependency(backendStack);
 }
 
-// Add tags to all stacks
+// Tags applied to all stacks
 cdk.Tags.of(app).add('Application', 'HotelManagement');
 cdk.Tags.of(app).add('ManagedBy', 'CDK');
 cdk.Tags.of(app).add('Environment', environment);

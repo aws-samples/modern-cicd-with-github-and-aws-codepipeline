@@ -3,18 +3,12 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { BackendStack } from './backend-stack';
 
 export interface DeploymentStackProps extends cdk.StackProps {
-  frontendBucket: s3.IBucket;
-  cloudFrontDistribution: cloudfront.CloudFrontWebDistribution;
-  backendStack: BackendStack;
-  artifactsBucket: s3.IBucket;
-  codeBuildFrontEndRole: iam.IRole;
-  codeBuildBackEndRole: iam.IRole;
+  environment: string;
   codeConnectionArn: string;
   githubRepo: string;
   githubBranch: string;
@@ -23,15 +17,14 @@ export interface DeploymentStackProps extends cdk.StackProps {
 /**
  * Deployment Stack (Lab 4 Accelerator)
  *
- * Creates a single pipeline that deploys the full stack in order:
+ * A single pipeline that deploys the full stack in order:
  * - Source: GitHub via CodeConnections
- * - Deploy Backend: CloudFormation deploy of backend.yml (Lambda, API Gateway, DynamoDB)
+ * - Deploy Backend: CloudFormation deploy of backend/backend.yml to hotel-backend-<env>
  * - Build Frontend: production React build
- * - Deploy Frontend: upload to S3 (served via CloudFront)
+ * - Deploy Frontend: upload to the provisioned frontend S3 bucket
  *
- * This mirrors the manual Lab 4 goal of deploying the complete serverless
- * application from one coordinated pipeline. CDK creates a dedicated,
- * least-privilege pipeline role in this stack to avoid cross-stack cycles.
+ * Base infrastructure (frontend bucket, artifacts bucket, CodeBuild role) is
+ * imported from SSM (published by base-infra.yaml during provisioning).
  *
  * Workshop Module: Lab 4 - Continuous Deployment
  */
@@ -41,14 +34,24 @@ export class DeploymentStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DeploymentStackProps) {
     super(scope, id, props);
 
-    // Import the shared CodeBuild role by ARN (mutable) so project-scoped grants
-    // land in this stack rather than BaseInfraStack — avoids a cyclic dependency.
+    const artifactsBucket = s3.Bucket.fromBucketName(
+      this,
+      'ArtifactsBucket',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/s3/PipelineArtifactsBucketName'),
+    );
+    const frontendBucket = s3.Bucket.fromBucketName(
+      this,
+      'FrontendBucket',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/s3/FrontendBucketName'),
+    );
     const codeBuildFrontEndRole = iam.Role.fromRoleArn(
       this,
-      'ImportedDeploymentFrontEndRole',
-      props.codeBuildFrontEndRole.roleArn,
+      'CodeBuildFrontEndRole',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/roles/CodeBuildFrontEndRoleArn'),
       { mutable: true },
     );
+
+    const backendStackName = `hotel-backend-${props.environment}`;
 
     const frontendBuildProject = new codebuild.PipelineProject(this, 'FullStackFrontendBuild', {
       projectName: 'hotel-fullstack-frontend-build',
@@ -66,7 +69,7 @@ export class DeploymentStack extends cdk.Stack {
 
     this.pipeline = new codepipeline.Pipeline(this, 'DeploymentPipeline', {
       pipelineName: 'hotel-fullstack-pipeline',
-      artifactBucket: props.artifactsBucket,
+      artifactBucket: artifactsBucket,
       stages: [
         {
           stageName: 'Source',
@@ -87,12 +90,12 @@ export class DeploymentStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.CloudFormationCreateUpdateStackAction({
               actionName: 'Deploy_Backend_Stack',
-              stackName: props.backendStack.stackName,
+              stackName: backendStackName,
               templatePath: sourceOutput.atPath('backend/backend.yml'),
               adminPermissions: true,
               parameterOverrides: {
                 HotelName: 'Hotel Yorba',
-                Environment: 'dev',
+                Environment: props.environment,
               },
             }),
           ],
@@ -113,7 +116,7 @@ export class DeploymentStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.S3DeployAction({
               actionName: 'Deploy_to_S3',
-              bucket: props.frontendBucket,
+              bucket: frontendBucket,
               input: frontendBuildOutput,
               extract: true,
             }),

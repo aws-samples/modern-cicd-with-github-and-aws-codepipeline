@@ -3,15 +3,11 @@ import * as codepipeline from 'aws-cdk-lib/aws-codepipeline';
 import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 export interface FrontendPipelineStackProps extends cdk.StackProps {
-  frontendBucket: s3.IBucket;
-  cloudFrontDistribution: cloudfront.CloudFrontWebDistribution;
-  artifactsBucket: s3.IBucket;
-  codeBuildRole: iam.IRole;
   codeConnectionArn: string;
   githubRepo: string;
   githubBranch: string;
@@ -19,16 +15,17 @@ export interface FrontendPipelineStackProps extends cdk.StackProps {
 
 /**
  * Frontend Pipeline Stack (Lab 2 Accelerator)
- * 
+ *
  * Creates a CI/CD pipeline for the React frontend:
- * - Source stage: GitHub via CodeConnections
- * - Test stage: Unit tests and property-based tests
- * - Build stage: Production build
- * - Deploy stage: S3 upload and CloudFront invalidation
- * 
- * This stack corresponds to Workshop Lab 2 and provides an accelerated
- * way to set up the frontend pipeline without manual configuration.
- * 
+ * - Source: GitHub via CodeConnections
+ * - Test: unit and property-based tests
+ * - Build: production build
+ * - Deploy: upload to the frontend S3 bucket
+ *
+ * The base infrastructure (frontend bucket, artifacts bucket, CodeBuild role)
+ * is created during provisioning by base-infra.yaml and imported here from SSM,
+ * so this stack does not recreate it.
+ *
  * Workshop Module: Lab 2 - Frontend Pipeline
  */
 export class FrontendPipelineStack extends cdk.Stack {
@@ -37,20 +34,28 @@ export class FrontendPipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: FrontendPipelineStackProps) {
     super(scope, id, props);
 
+    // Import provisioned base infrastructure from SSM (published by base-infra.yaml)
+    const artifactsBucket = s3.Bucket.fromBucketName(
+      this,
+      'ArtifactsBucket',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/s3/PipelineArtifactsBucketName'),
+    );
+    const frontendBucket = s3.Bucket.fromBucketName(
+      this,
+      'FrontendBucket',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/s3/FrontendBucketName'),
+    );
+    const codeBuildRole = iam.Role.fromRoleArn(
+      this,
+      'CodeBuildRole',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/roles/CodeBuildFrontEndRoleArn'),
+      { mutable: true },
+    );
+
     // ========================================================================
     // CodeBuild Projects
     // ========================================================================
 
-    // Import the shared CodeBuild role by ARN. Using the live construct from
-    // BaseInfraStack causes a cyclic dependency, because CDK adds project-scoped
-    // grants to that role (in BaseInfraStack) that reference the CodeBuild
-    // projects in this stack. Importing with mutable:true puts those grants in
-    // THIS stack instead, keeping the reference one-directional.
-    const codeBuildRole = iam.Role.fromRoleArn(this, 'ImportedFrontendCodeBuildRole', props.codeBuildRole.roleArn, {
-      mutable: true,
-    });
-
-    // Test project
     const testProject = new codebuild.PipelineProject(this, 'FrontendTestProject', {
       projectName: 'hotel-frontend-test',
       description: 'Run frontend unit tests and property-based tests',
@@ -62,7 +67,6 @@ export class FrontendPipelineStack extends cdk.Stack {
       buildSpec: codebuild.BuildSpec.fromSourceFilename('frontend/buildspec-test.yml'),
     });
 
-    // Build project
     const buildProject = new codebuild.PipelineProject(this, 'FrontendBuildProject', {
       projectName: 'hotel-frontend-build',
       description: 'Build React application for production',
@@ -82,14 +86,9 @@ export class FrontendPipelineStack extends cdk.Stack {
     const testOutput = new codepipeline.Artifact('TestOutput');
     const buildOutput = new codepipeline.Artifact('BuildOutput');
 
-    // Let CDK create a dedicated, least-privilege pipeline role in this stack.
-    // Reusing the shared BaseInfra CodePipelineRole here causes a cyclic
-    // dependency: CDK adds grants to that role (in BaseInfraStack) referencing
-    // the CodeBuild projects in this stack, while this stack already depends on
-    // BaseInfraStack.
     this.pipeline = new codepipeline.Pipeline(this, 'FrontendPipeline', {
       pipelineName: 'hotel-frontend-pipeline',
-      artifactBucket: props.artifactsBucket,
+      artifactBucket: artifactsBucket,
       stages: [
         {
           stageName: 'Source',
@@ -132,7 +131,7 @@ export class FrontendPipelineStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.S3DeployAction({
               actionName: 'Deploy_to_S3',
-              bucket: props.frontendBucket,
+              bucket: frontendBucket,
               input: buildOutput,
               extract: true,
             }),
@@ -141,18 +140,9 @@ export class FrontendPipelineStack extends cdk.Stack {
       ],
     });
 
-    // ========================================================================
-    // Stack Outputs
-    // ========================================================================
-
     new cdk.CfnOutput(this, 'PipelineName', {
       value: this.pipeline.pipelineName,
       description: 'Frontend CI/CD pipeline name',
-    });
-
-    new cdk.CfnOutput(this, 'PipelineArn', {
-      value: this.pipeline.pipelineArn,
-      description: 'Frontend CI/CD pipeline ARN',
     });
   }
 }

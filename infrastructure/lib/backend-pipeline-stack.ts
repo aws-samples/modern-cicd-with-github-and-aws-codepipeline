@@ -4,13 +4,11 @@ import * as codepipeline_actions from 'aws-cdk-lib/aws-codepipeline-actions';
 import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { BackendStack } from './backend-stack';
 
 export interface BackendPipelineStackProps extends cdk.StackProps {
-  backendStack: BackendStack;
-  artifactsBucket: s3.IBucket;
-  codeBuildRole: iam.IRole;
+  environment: string;
   codeConnectionArn: string;
   githubRepo: string;
   githubBranch: string;
@@ -18,16 +16,16 @@ export interface BackendPipelineStackProps extends cdk.StackProps {
 
 /**
  * Backend Pipeline Stack (Lab 3 Accelerator)
- * 
+ *
  * Creates a CI/CD pipeline for the Lambda backend:
- * - Source stage: GitHub via CodeConnections
- * - Test stage: Unit tests and property-based tests
- * - Validate stage: CloudFormation validation and cfn_nag
- * - Deploy stage: CloudFormation stack deployment
- * 
- * This stack corresponds to Workshop Lab 3 and provides an accelerated
- * way to set up the backend pipeline without manual configuration.
- * 
+ * - Source: GitHub via CodeConnections
+ * - Test: unit and property-based tests
+ * - Validate: CloudFormation validation / cfn_nag
+ * - Deploy: CloudFormation deploy of backend/backend.yml to hotel-backend-<env>
+ *
+ * The artifacts bucket and CodeBuild role are created during provisioning by
+ * base-infra.yaml and imported here from SSM.
+ *
  * Workshop Module: Lab 3 - Backend Pipeline
  */
 export class BackendPipelineStack extends cdk.Stack {
@@ -36,20 +34,27 @@ export class BackendPipelineStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BackendPipelineStackProps) {
     super(scope, id, props);
 
+    // Import provisioned base infrastructure from SSM (published by base-infra.yaml)
+    const artifactsBucket = s3.Bucket.fromBucketName(
+      this,
+      'ArtifactsBucket',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/s3/PipelineArtifactsBucketName'),
+    );
+    const codeBuildRole = iam.Role.fromRoleArn(
+      this,
+      'CodeBuildRole',
+      ssm.StringParameter.valueForStringParameter(this, '/hotelapp/roles/CodeBuildBackEndRoleArn'),
+      { mutable: true },
+    );
+
+    // CloudFormation stack the pipeline deploys the backend into. Kept distinct
+    // from the CDK-managed HotelBackendStack to avoid two stacks owning one name.
+    const backendStackName = `hotel-backend-${props.environment}`;
+
     // ========================================================================
     // CodeBuild Projects
     // ========================================================================
 
-    // Import the shared CodeBuild role by ARN. Using the live construct from
-    // BaseInfraStack causes a cyclic dependency, because CDK adds project-scoped
-    // grants to that role (in BaseInfraStack) that reference the CodeBuild
-    // projects in this stack. Importing with mutable:true puts those grants in
-    // THIS stack instead, keeping the reference one-directional.
-    const codeBuildRole = iam.Role.fromRoleArn(this, 'ImportedBackendCodeBuildRole', props.codeBuildRole.roleArn, {
-      mutable: true,
-    });
-
-    // Test project
     const testProject = new codebuild.PipelineProject(this, 'BackendTestProject', {
       projectName: 'hotel-backend-test',
       description: 'Run backend unit tests and property-based tests',
@@ -61,7 +66,6 @@ export class BackendPipelineStack extends cdk.Stack {
       buildSpec: codebuild.BuildSpec.fromSourceFilename('backend/buildspec-test.yml'),
     });
 
-    // Validate project
     const validateProject = new codebuild.PipelineProject(this, 'BackendValidateProject', {
       projectName: 'hotel-backend-validate',
       description: 'Validate CloudFormation template and run security checks',
@@ -81,14 +85,9 @@ export class BackendPipelineStack extends cdk.Stack {
     const testOutput = new codepipeline.Artifact('TestOutput');
     const validateOutput = new codepipeline.Artifact('ValidateOutput');
 
-    // Let CDK create a dedicated, least-privilege pipeline role in this stack.
-    // Reusing the shared BaseInfra CodePipelineRole here causes a cyclic
-    // dependency: CDK adds grants to that role (in BaseInfraStack) referencing
-    // the CodeBuild projects in this stack, while this stack already depends on
-    // BaseInfraStack.
     this.pipeline = new codepipeline.Pipeline(this, 'BackendPipeline', {
       pipelineName: 'hotel-backend-pipeline',
-      artifactBucket: props.artifactsBucket,
+      artifactBucket: artifactsBucket,
       stages: [
         {
           stageName: 'Source',
@@ -131,12 +130,12 @@ export class BackendPipelineStack extends cdk.Stack {
           actions: [
             new codepipeline_actions.CloudFormationCreateUpdateStackAction({
               actionName: 'Deploy_Backend_Stack',
-              stackName: props.backendStack.stackName,
+              stackName: backendStackName,
               templatePath: sourceOutput.atPath('backend/backend.yml'),
               adminPermissions: true,
               parameterOverrides: {
                 HotelName: 'Hotel Yorba',
-                Environment: 'dev',
+                Environment: props.environment,
               },
             }),
           ],
@@ -144,18 +143,9 @@ export class BackendPipelineStack extends cdk.Stack {
       ],
     });
 
-    // ========================================================================
-    // Stack Outputs
-    // ========================================================================
-
     new cdk.CfnOutput(this, 'PipelineName', {
       value: this.pipeline.pipelineName,
       description: 'Backend CI/CD pipeline name',
-    });
-
-    new cdk.CfnOutput(this, 'PipelineArn', {
-      value: this.pipeline.pipelineArn,
-      description: 'Backend CI/CD pipeline ARN',
     });
   }
 }
